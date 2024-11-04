@@ -59,6 +59,9 @@ public:
   // Even more special: register a sniffer worker
   void registerSniffer(MSRlistener worker);
 
+  // Local request to the server with ability to send response to the wire
+  ModbusMessage localRequest(ModbusMessage msg, bool sendResponse);
+
 protected:
   // Prevent copy construction and assignment
   ModbusServerRTU(ModbusServerRTU& m) = delete;

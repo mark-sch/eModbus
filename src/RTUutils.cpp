@@ -209,7 +209,7 @@ ModbusMessage RTUutils::receive(uint8_t caller, Stream& serial, uint32_t timeout
     state = WAIT_DATA;
     // interval tracker 
     lastMicros = micros();
-  
+
     while (state != FINISHED) {
       switch (state) {
       // WAIT_DATA: await first data byte, but watch timeout

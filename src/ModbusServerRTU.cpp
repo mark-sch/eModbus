@@ -154,6 +154,66 @@ void ModbusServerRTU::registerSniffer(MSRlistener worker) {
   LOG_D("Registered sniffer\n");
 }
 
+// LocalRequest: get response from locally running server with ability to send response to wire
+ModbusMessage ModbusServerRTU::localRequest(ModbusMessage msg, bool sendResponse) {
+  ModbusMessage m;
+  uint8_t serverID = msg.getServerID();
+  uint8_t functionCode = msg.getFunctionCode();
+  LOG_D("Local request for %02X/%02X\n", serverID, functionCode);
+  HEXDUMP_V("Request", msg.data(), msg.size());
+  messageCount++;
+  // Try to get a worker for the request
+  MBSworker worker = getWorker(serverID, functionCode);
+  // Did we get one?
+  if (worker != nullptr) {
+    // Yes. call it and return the response
+    LOG_D("Call worker\n");
+    m = worker(msg);
+    LOG_D("Worker responded\n");
+    HEXDUMP_V("Worker response", m.data(), m.size());
+    // Process Response. Is it one of the predefined types?
+    if (m[0] == 0xFF && (m[1] == 0xF0 || m[1] == 0xF1)) {
+      // Yes. Check it
+      switch (m[1]) {
+      case 0xF0: // NIL
+        m.clear();
+        break;
+      case 0xF1: // ECHO
+        m.clear();
+        m.append(msg);
+        break;
+      default:   // Will not get here, but lint likes it!
+        break;
+      }
+    }
+    HEXDUMP_V("Response", m.data(), m.size());
+    if (m.getError() != SUCCESS) {
+      errorCount++;
+    }
+    if (sendResponse) {
+      RTUutils::send(*(this->MSRserial), this->MSRlastMicros, this->MSRinterval, this->MRTSrts, m, this->MSRuseASCII);
+    }
+    return m;
+  } else {
+    LOG_D("No worker found. Error response.\n");
+    // No. Is there at least one worker for the serverID?
+    if (isServerFor(serverID)) {
+      // Yes. Respond with "illegal function code"
+      m.setError(serverID, functionCode, ILLEGAL_FUNCTION);
+    } else {
+      // No. Respond with "Invalid server ID"
+      m.setError(serverID, functionCode, INVALID_SERVER);
+    }
+    errorCount++;
+    return m;
+  }
+  // We should never get here...
+  LOG_C("Internal problem: should not get here!\n");
+  m.setError(serverID, functionCode, UNDEFINED_ERROR);
+  errorCount++;
+  return m;
+}
+
 // serve: loop until killed and receive messages from the RTU interface
 void ModbusServerRTU::serve(ModbusServerRTU *myServer) {
   ModbusMessage request;                // received request message
